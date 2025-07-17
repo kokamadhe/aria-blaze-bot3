@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-PORN_PEN_API_KEY = os.getenv("PORN_PEN_API_KEY")
 BOT_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 app = Flask(__name__)
@@ -17,15 +16,16 @@ def send_message(chat_id, text):
         "text": text
     })
 
-def send_photo(chat_id, photo_url):
+def send_photo(chat_id, image_url):
     requests.post(f"{BOT_URL}/sendPhoto", json={
         "chat_id": chat_id,
-        "photo": photo_url
+        "photo": image_url
     })
 
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
+
     if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
@@ -33,32 +33,40 @@ def webhook():
         if text.startswith("/image"):
             prompt = text.replace("/image", "").strip()
             if not prompt:
-                send_message(chat_id, "Please provide a prompt. Example:\n/image redhead elf with big boobs")
+                send_message(chat_id, "Please provide a prompt. Example:\n/image a naked elf warrior with red hair")
                 return "ok"
 
-            send_message(chat_id, "🖌 Generating your image... please wait.")
+            send_message(chat_id, "🎨 Generating your NSFW image... please wait 20–40 seconds.")
 
-            # Call Pornpen API
             try:
-                headers = {
-                    "Authorization": f"Bearer {PORN_PEN_API_KEY}",
-                    "Content-Type": "application/json"
-                }
+                # Hugging Face NSFW SD 1.5 endpoint (no auth needed)
+                hf_url = "https://stablediffusionapi.com/api/v3/text2img"
+
                 payload = {
                     "prompt": prompt,
-                    "nsfw": True,
-                    "num_images": 1,
-                    "resolution": "512x768"
+                    "negative_prompt": "blurry, low quality, watermark, text, cropped",
+                    "width": "512",
+                    "height": "768",
+                    "samples": "1",
+                    "num_inference_steps": "30",
+                    "guidance_scale": 7.5,
+                    "safety_checker": "no",
+                    "enhance_prompt": "yes",
+                    "seed": None,
+                    "webhook": None,
+                    "track_id": None
                 }
-                response = requests.post("https://api.pornpen.ai/generate", headers=headers, json=payload)
+
+                response = requests.post(hf_url, json=payload)
                 result = response.json()
 
-                if response.status_code == 200 and result.get("images"):
-                    image_url = result["images"][0]["url"]
+                if "output" in result:
+                    image_url = result["output"][0]
                     send_photo(chat_id, image_url)
                 else:
                     send_message(chat_id, "❌ Failed to generate image. Try again later.")
             except Exception as e:
-                send_message(chat_id, f"❌ Error: {str(e)}")
+                send_message(chat_id, f"⚠️ Error: {str(e)}")
 
     return "ok"
+
